@@ -1,16 +1,16 @@
 macro_rules! struct_events {
     (
-        keyboard: { $( $k_alias:ident : $k_sdl:ident ), *},
-
+        keyboard: { $( $k_alias:ident : $k_sdl:ident ),* },
         else: { $( $e_alias:ident : $e_sdl:pat ),* }
     )
     => {
         use ::sdl2::EventPump;
 
+
         pub struct ImmediateEvents {
             resize: Option<(u32, u32)>,
-            $( pub $k_alias: Option<bool> , )*
-            $( pub $e_alias: bool ),*
+            $( pub $k_alias : Option<bool> , )*
+            $( pub $e_alias : bool ),*
         }
 
         impl ImmediateEvents {
@@ -22,6 +22,7 @@ macro_rules! struct_events {
                 }
             }
         }
+
 
         pub struct Events {
             pump: EventPump,
@@ -53,8 +54,9 @@ macro_rules! struct_events {
 
                     match event {
                         Window { win_event_id: Resized, .. } => {
-                            self.now.resize = Some(renderer.output_size().unwrap())
-                        }
+                            self.now.resize = Some(renderer.output_size().unwrap());
+                        },
+
                         KeyDown { keycode, .. } => match keycode {
                             //
                             $(
@@ -68,6 +70,7 @@ macro_rules! struct_events {
                             ),*
                             _ => {}
                         },
+
                         KeyUp { keycode, .. } => match keycode {
                             $(
                                 Some($k_sdl) => {
@@ -77,23 +80,14 @@ macro_rules! struct_events {
                             ),*
                             _ => {}
                         },
-                        // Space { keycode, .. } => match keycode {
-                        //     $(
-                        //         Some($k_sdl) => {
-                        //             if !self.$k_alias {
-                        //                 self.now.$k_alias = Some(true);
-                        //             }
 
-                        //             self.$k_alias = true;
-                        //         }
-                        //     ),*
-                        //     _ => {}
-                        // },
                         $(
                             $e_sdl => {
                                 self.now.$e_alias = true;
                             }
                         )*,
+
+
                         _ => {}
                     }
                 }
