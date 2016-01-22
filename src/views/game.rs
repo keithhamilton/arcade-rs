@@ -1,6 +1,7 @@
 use ::phi::{Phi, View, ViewAction};
 use ::phi::data::{MaybeAlive, Rectangle};
 use ::phi::gfx::{AnimatedSprite, AnimatedSpriteDescr, CopySprite, Sprite};
+use ::phi::audio as Audio;
 use ::sdl2::pixels::Color;
 use ::sdl2::render::Renderer;
 use views::shared::BgSet;
@@ -23,6 +24,7 @@ const ASTEROIDS_TOTAL: usize = ASTEROIDS_WIDE * ASTEROIDS_HIGH - 4;
 const ASTEROID_SIDE: f64 = 96.0;
 
 const EXPLOSION_PATH: &'static str = "assets/explosion.png";
+const EXPLOSION_AUDIO_PATH: &'static str = "assets/explosion.wav";
 const EXPLOSIONS_WIDE: usize = 5;
 const EXPLOSIONS_HIGH: usize = 4;
 const EXPLOSIONS_TOTAL: usize = 17;
@@ -284,6 +286,7 @@ impl View for GameView {
                 if asteroid_alive {
                     Some(asteroid)
                 } else {
+                    Audio::playback_for(EXPLOSION_AUDIO_PATH);
                     self.explosions.push(
                         self.explosion_factory.at_center(
                             asteroid.rect().center()));
