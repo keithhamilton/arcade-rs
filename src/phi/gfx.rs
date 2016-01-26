@@ -1,4 +1,4 @@
-use ::phi::Phi;            
+use ::phi::Phi;
 use ::phi::data::Rectangle;
 use ::std::cell::RefCell;
 use ::std::path::Path;
@@ -20,14 +20,18 @@ pub trait Renderable {
 #[derive(Clone)]
 pub struct AnimatedSprite {
     /// The frames that will be rendered, in order.
-    sprites: Rc<Vec<Sprite>>,
+    pub sprites: Vec<Sprite>,
 
     /// The time it takes to get from one frame to the next, in seconds.
     frame_delay: f64,
 
     /// The total time that the sprite has been alive, from which the current
     /// frame is derived.
-    current_time: f64,
+    pub current_time: f64,
+
+    pub total_frames: usize,
+    pub rest_frames: usize,
+    pub is_resting: bool,
 }
 
 
@@ -35,6 +39,8 @@ pub struct AnimatedSpriteDescr<'a> {
     pub sprite_type: &'a str,
     pub image_path: &'a str,
     pub total_frames: usize,
+    pub rest_frames: usize,
+    pub begin_rest: bool,
     pub frames_high: usize,
     pub frames_wide: usize,
     pub frame_w: f64,
@@ -62,22 +68,25 @@ pub trait CopySprite<T> {
 // ##############################################################
 impl AnimatedSprite {
     /// Creates a new animated sprite initialized at time 0.
-    pub fn new(sprites: Vec<Sprite>, frame_delay: f64) -> AnimatedSprite {
+    pub fn new(sprites: Vec<Sprite>, frame_delay: f64, total_frames: usize, rest_frames: usize) -> AnimatedSprite {
         AnimatedSprite {
-            sprites: Rc::new(sprites),
+            sprites: sprites,
             frame_delay: frame_delay,
             current_time: 0.0,
+            total_frames: total_frames,
+            rest_frames: rest_frames,
+            is_resting: false,
         }
     }
 
     /// Creates a new animated sprite which goes to the next frame `fps` times
     /// every second.
-    pub fn with_fps(sprites: Vec<Sprite>, fps: f64) -> AnimatedSprite {
+    pub fn with_fps(sprites: Vec<Sprite>, fps: f64, total_frames: usize, rest_frames: usize) -> AnimatedSprite {
         if fps == 0.0 {
             panic!("Passed 0 to AnimatedSprite::with_fps");
         }
 
-        AnimatedSprite::new(sprites, 1.0 / fps)
+        AnimatedSprite::new(sprites, 1.0 / fps, total_frames, rest_frames)
     }
 
 
@@ -114,6 +123,10 @@ impl AnimatedSprite {
         }
     }
 
+    pub fn current_time(&mut self) -> f64 {
+        self.current_time
+    }
+
     pub fn load_frames(phi: &mut Phi, descr: AnimatedSpriteDescr) -> Vec<Sprite> {
         let spritesheet = Sprite::load(&mut phi.renderer, descr.image_path);
         match spritesheet {
@@ -136,7 +149,9 @@ impl AnimatedSprite {
                         match rendering {
                             None => panic!("Could not render the {} sprite region!",
                                            descr.sprite_type),
-                            Some(sprite) => sprite_frames.push(sprite),
+                            Some(sprite) => {
+                                sprite_frames.push(sprite);
+                            },
                         }
 
                     }
@@ -151,10 +166,11 @@ impl AnimatedSprite {
 impl Renderable for AnimatedSprite {
     /// Renders the current frame of the sprite.
     fn render(&self, renderer: &mut Renderer, dest: Rectangle) {
+
         let current_frame =
             (self.current_time / self.frame_delay) as usize % self.frames();
 
-        let sprite = &self.sprites[current_frame];
+        let mut sprite = &self.sprites[current_frame];
         sprite.render(renderer, dest);
     }
 }
@@ -187,7 +203,6 @@ impl Sprite {
     pub fn size(&self) -> (f64, f64) {
         (self.src.w, self.src.h)
     }
-
 
     /// Returns a new `Sprite` representing a sub-region of the current one.
     /// The provided `rect` is relative to the currently held region.

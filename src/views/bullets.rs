@@ -4,8 +4,8 @@ use sdl2::pixels::Color;
 
 pub const BULLET_SPEED: f64 = 600.0;
 pub const BULLET_SPEED_SLOW: f64 = 300.0;
-pub const BULLET_W: f64 = 8.0;
-pub const BULLET_H: f64 = 4.0;
+pub const BULLET_W: f64 = 4.0;
+pub const BULLET_H: f64 = 8.0;
 
 
 #[derive(Clone, Copy)]
@@ -65,7 +65,7 @@ pub trait Bullet {
 impl Bullet for DivergentBullet {
     fn update(mut self: Box<Self>, phi: &mut Phi, dt: f64) -> Option<Box<Bullet>> {
         self.total_time += dt;
-        self.pos_x += BULLET_SPEED_SLOW * dt;
+        self.origin_y -= BULLET_SPEED_SLOW * dt;
 
         // If the bullet leaves the screen, delete it.
         let (w, h) = phi.output_size();
@@ -90,11 +90,11 @@ impl Bullet for DivergentBullet {
 
     fn rect(&self) -> Rectangle {
         let time_delta = self.total_time / self.b;
-        let dy = self.a * (time_delta.powi(3) - time_delta.powi(2));
+        let dx = self.a * (time_delta.powi(3) - time_delta.powi(2));
 
         Rectangle {
-            x: self.pos_x,
-            y: self.origin_y + dy,
+            x: self.pos_x + dx,
+            y: self.origin_y,
             w: BULLET_W,
             h: BULLET_H
         }
@@ -105,7 +105,7 @@ impl Bullet for DivergentBullet {
 impl Bullet for SineBullet {
     fn update(mut self: Box<Self>, phi: &mut Phi, dt: f64) -> Option<Box<Bullet>> {
         self.total_time += dt;
-        self.pos_x += BULLET_SPEED * dt;
+        self.origin_y -= BULLET_SPEED * dt;
 
         let (w, _) = phi.output_size();
         if self.rect().x > w {
@@ -126,10 +126,10 @@ impl Bullet for SineBullet {
     }
 
     fn rect(&self) -> Rectangle {
-        let dy = self.amplitude * f64::sin(self.angular_vel * self.total_time);
+        let dx = self.amplitude * f64::sin(self.angular_vel * self.total_time);
         Rectangle {
-            x: self.pos_x,
-            y: self.origin_y + dy,
+            x: self.pos_x + dx,
+            y: self.origin_y,
             w: BULLET_W,
             h: BULLET_H,
         }
@@ -153,7 +153,7 @@ impl RectBullet {
 impl Bullet for RectBullet {
     fn update(mut self: Box<Self>, phi: &mut Phi, dt: f64) -> Option<Box<Bullet>> {
         let (w, _) = phi.output_size();
-        self.rect.x += BULLET_SPEED * dt;
+        self.rect.y -= BULLET_SPEED * dt;
 
         // if the bullet has left the screen, delete it
         if self.rect.x > w {
@@ -178,62 +178,62 @@ impl Bullet for RectBullet {
 }
 
 
-pub fn spawn_bullets(cannon: CannonType, cannons_x: f64,
-                     cannon1_y: f64, cannon2_y: f64) -> Vec<Box<Bullet>> {
+pub fn spawn_bullets(cannon: CannonType, cannon1_x: f64,
+                     cannon2_x: f64, cannons_y: f64) -> Vec<Box<Bullet>> {
     match cannon {
         CannonType::RectBullet =>
             vec![
                 Box::new(RectBullet {
                     rect: Rectangle {
-                        x: cannons_x,
-                        y: cannon1_y,
+                        x: cannon1_x,
+                        y: cannons_y,
                         w: BULLET_W,
                         h: BULLET_H,
                     }
                 }),
-                Box::new(RectBullet {
-                    rect: Rectangle {
-                        x: cannons_x,
-                        y: cannon2_y,
-                        w: BULLET_W,
-                        h: BULLET_H,
-                    }
-                }),
+                // Box::new(RectBullet {
+                //     rect: Rectangle {
+                //         x: cannon2_x,
+                //         y: cannons_y,
+                //         w: BULLET_W,
+                //         h: BULLET_H,
+                //     }
+                // }),
             ],
         CannonType::SineBullet { amplitude, angular_vel } =>
             vec![
                 Box::new(SineBullet {
-                    pos_x: cannons_x,
-                    origin_y: cannon1_y,
+                    pos_x: cannon1_x,
+                    origin_y: cannons_y,
                     amplitude: amplitude,
                     angular_vel: angular_vel,
                     total_time: 0.0,
                 }),
-                Box::new(SineBullet {
-                    pos_x: cannons_x,
-                    origin_y: cannon2_y,
-                    amplitude: amplitude,
-                    angular_vel: angular_vel,
-                    total_time: 0.0,
-                })
+                // Box::new(SineBullet {
+                //     pos_x: cannon2_x,
+                //     origin_y: cannons_y,
+                //     amplitude: amplitude,
+                //     angular_vel: angular_vel,
+                //     total_time: 0.0,
+                // })
             ],
 
         CannonType::DivergentBullet { a, b } =>
             vec![
                 Box::new(DivergentBullet {
-                    pos_x: cannons_x,
-                    origin_y: cannon1_y,
+                    pos_x: cannon1_x,
+                    origin_y: cannons_y,
                     a: -a,
                     b: b,
                     total_time: 0.0,
                 }),
-                Box::new(DivergentBullet {
-                    pos_x: cannons_x,
-                    origin_y: cannon2_y,
-                    a: a,
-                    b: b,
-                    total_time: 0.0,
-                })
+                // Box::new(DivergentBullet {
+                //     pos_x: cannon2_x,
+                //     origin_y: cannons_y,
+                //     a: a,
+                //     b: b,
+                //     total_time: 0.0,
+                // })
             ]
         }
 }

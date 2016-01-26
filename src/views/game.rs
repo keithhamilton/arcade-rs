@@ -4,6 +4,7 @@ use ::phi::gfx::{AnimatedSprite, AnimatedSpriteDescr, CopySprite, Sprite};
 use ::phi::audio as Audio;
 use ::sdl2::pixels::Color;
 use ::sdl2::render::Renderer;
+use ::std::rc::Rc;
 use views::shared::BgSet;
 use views::bullets as Bullet;
 
@@ -12,8 +13,8 @@ use views::bullets as Bullet;
 /// Pixels traveled by the player's ship every second, when it is moving.
 const DEBUG: bool = false;
 
-const PLAYER_PATH: &'static str = "assets/player.png";
-const PLAYER_SPEED: f64 = 180.0;
+const PLAYER_PATH: &'static str = "assets/player_vert.png";
+const PLAYER_SPEED: f64 = 360.0;
 const PLAYER_W: f64 = 43.0;
 const PLAYER_H: f64 = 39.0;
 
@@ -22,6 +23,14 @@ const ASTEROIDS_WIDE: usize = 21;
 const ASTEROIDS_HIGH: usize = 7;
 const ASTEROIDS_TOTAL: usize = ASTEROIDS_WIDE * ASTEROIDS_HIGH - 4;
 const ASTEROID_SIDE: f64 = 96.0;
+
+const TRUMP_PATH: &'static str = "assets/8_bit/trump/trump_sprite_800h.png";
+const TRUMPS_WIDE: usize = 4;
+const TRUMPS_HIGH: usize = 4;
+const TRUMPS_TOTAL: usize = 16;
+const TRUMP_WIDTH: f64 = 129.75;
+const TRUMP_HEIGHT: f64 = 200.0;
+const TRUMP_REST_FRAMES: usize = 4;
 
 const EXPLOSION_PATH: &'static str = "assets/explosion.png";
 const EXPLOSION_AUDIO_PATH: &'static str = "assets/explosion.wav";
@@ -54,7 +63,123 @@ enum PlayerFrame {
 struct Asteroid {
     sprite: AnimatedSprite,
     rect: Rectangle,
-    vel: f64
+    vel: f64,
+    amplitude: f64,
+    angular_vel: f64,
+    pos_x: f64,
+    origin_y: f64,
+}
+
+
+struct Trump {
+    sprite: AnimatedSprite,
+    rect: Rectangle,
+    amplitude: f64,
+    angular_vel: f64,
+    pos_x: f64,
+    origin_y: f64,
+}
+
+impl Trump {
+    fn factory(phi: &mut Phi) -> TrumpFactory {
+        TrumpFactory {
+            sprite: AnimatedSprite::with_fps(
+                AnimatedSprite::load_frames(phi, AnimatedSpriteDescr {
+                    sprite_type: "trump",
+                    image_path: TRUMP_PATH,
+                    total_frames: TRUMPS_TOTAL,
+                    rest_frames: TRUMP_REST_FRAMES - 1,
+                    begin_rest: false,
+                    frames_high: TRUMPS_HIGH,
+                    frames_wide: TRUMPS_WIDE,
+                    frame_w: TRUMP_WIDTH,
+                    frame_h: TRUMP_HEIGHT,
+                }), 1.0, TRUMPS_TOTAL, TRUMP_REST_FRAMES),
+        }
+    }
+
+    fn update(mut self, phi: &mut Phi, dt: f64) -> Option<Trump> {
+        //self.rect.x -= dt * self.vel;
+        self.sprite.add_time(dt);
+        self.rect();
+
+        if self.sprite.current_time >= 8.0 {
+            None
+        } else {
+            // when current_time == 0.21500000000000008, the scaling part
+            // of the trump sprite animation will be finished.
+            // at that point, the animation should be limited to the final four
+            // sprite frames, since Trump will be all the way in the foreground.
+            if self.sprite.current_time >= 0.21500000000000008 && !self.sprite.is_resting {
+                let sprites = self.sprite.sprites.clone();
+                let mut sprite_vec = Vec::with_capacity(4);
+                let sprite_count = sprites.len();
+                for (i, s) in sprites.into_iter().enumerate() {
+                    if i >= 12 {
+                        sprite_vec.push(s.clone());
+                    }
+                }
+
+                self.sprite.sprites = sprite_vec;
+                self.sprite.is_resting = true;
+
+            }
+
+            Some(self)
+        }
+    }
+
+    fn render(&self, phi: &mut Phi) {
+        if DEBUG {
+            phi.renderer.set_draw_color(Color::RGB(200, 200, 50));
+            let rendering = self.rect().to_sdl();
+            match rendering {
+                None => panic!("Unable to render debug Trump!"),
+                Some(trump) => phi.renderer.fill_rect(trump),
+            }
+        }
+
+        phi.renderer.copy_sprite(&self.sprite, self.rect);
+    }
+
+    fn rect(&self) -> Rectangle {
+        let dy = self.amplitude * f64::sin(self.angular_vel * self.sprite.current_time);
+        Rectangle {
+            x: self.pos_x,
+            y: self.origin_y + dy,
+            w: TRUMP_WIDTH,
+            h: TRUMP_HEIGHT,
+        }
+    }
+}
+
+struct TrumpFactory {
+    sprite: AnimatedSprite,
+}
+
+impl TrumpFactory {
+    fn random(&self, phi: &mut Phi) -> Trump {
+        let (w, h) = phi.output_size();
+
+        let mut sprite = self.sprite.clone();
+        let pos_x = ::rand::random::<f64>().abs() * (w - TRUMP_WIDTH);
+        let origin_y = h / 2.0 - 20.0;
+        sprite.set_fps(::rand::random::<f64>().abs() * 20.0 + 10.0);
+
+        Trump {
+            sprite: sprite,
+            rect: Rectangle {
+                w: TRUMP_WIDTH,
+                h: TRUMP_HEIGHT,
+                x: pos_x,
+                y: origin_y,
+            },
+            amplitude: 15.0,
+            angular_vel: 10.0,
+            pos_x: pos_x,
+            origin_y: origin_y,
+        }
+    }
 }
 
 
@@ -77,8 +202,8 @@ pub struct ExplosionFactory {
 pub struct GameView {
     player: Player,
     bullets: Vec<Box<Bullet::Bullet>>,
-    asteroids: Vec<Asteroid>,
-    asteroid_factory: AsteroidFactory,
+    trumps: Vec<Trump>,
+    trump_factory: TrumpFactory,
     explosions: Vec<Explosion>,
     explosion_factory: ExplosionFactory,
     bg: BgSet,
@@ -92,77 +217,9 @@ struct Player {
     cannon: Bullet::CannonType,
 }
 
-
 // ##############################################################
 // impls
 // ##############################################################
-impl Asteroid {
-    fn factory(phi: &mut Phi) -> AsteroidFactory {
-        AsteroidFactory {
-            sprite: AnimatedSprite::with_fps(
-                AnimatedSprite::load_frames(phi, AnimatedSpriteDescr {
-                    sprite_type: "asteroid",
-                    image_path: ASTEROID_PATH,
-                    total_frames: ASTEROIDS_TOTAL,
-                    frames_high: ASTEROIDS_HIGH,
-                    frames_wide: ASTEROIDS_WIDE,
-                    frame_w: ASTEROID_SIDE,
-                    frame_h: ASTEROID_SIDE,
-                }), 1.0),
-        }
-    }
-
-    fn update(mut self, phi: &mut Phi, dt: f64) -> Option<Asteroid> {
-        self.rect.x -= dt * self.vel;
-        self.sprite.add_time(dt);
-
-        if self.rect.x <= -ASTEROID_SIDE {
-            None
-        } else {
-            Some(self)
-        }
-    }
-
-    fn render(&self, phi: &mut Phi) {
-        if DEBUG {
-            phi.renderer.set_draw_color(Color::RGB(200, 200, 50));
-            let rendering = self.rect().to_sdl();
-            match rendering {
-                None => panic!("Unable to render debug asteroid!"),
-                Some(asteroid) => phi.renderer.fill_rect(asteroid),
-            }
-        }
-
-        phi.renderer.copy_sprite(&self.sprite, self.rect);
-    }
-
-    fn rect(&self) -> Rectangle {
-        self.rect
-    }
-}
-
-
-impl AsteroidFactory {
-    fn random(&self, phi: &mut Phi) -> Asteroid {
-        let (w, h) = phi.output_size();
-
-        let mut sprite = self.sprite.clone();
-        sprite.set_fps(::rand::random::<f64>().abs() * 20.0 + 10.0);
-
-        Asteroid {
-            sprite: sprite,
-            rect: Rectangle {
-                w: ASTEROID_SIDE,
-                h: ASTEROID_SIDE,
-                x: w,
-                y: ::rand::random::<f64>().abs() * (h - ASTEROID_SIDE),
-            },
-            vel: ::rand::random::<f64>().abs() * 100.0 + 50.0,
-        }
-    }
-}
-
-
 impl Explosion {
     fn factory(phi: &mut Phi) -> ExplosionFactory {
         ExplosionFactory {
@@ -175,7 +232,9 @@ impl Explosion {
                     frames_wide: EXPLOSIONS_WIDE,
                     frame_w: EXPLOSION_SIDE,
                     frame_h: EXPLOSION_SIDE,
-                }), EXPLOSION_FPS),
+                    begin_rest: false,
+                    rest_frames: EXPLOSIONS_TOTAL,
+                }), EXPLOSION_FPS, EXPLOSIONS_TOTAL, EXPLOSIONS_TOTAL),
         }
     }
 
@@ -223,8 +282,10 @@ impl GameView {
         GameView {
             player: Player::new(phi),
             bullets: vec![],
-            asteroids: vec![],
-            asteroid_factory: Asteroid::factory(phi),
+            trumps: vec![],
+            trump_factory: Trump::factory(phi),
+            //asteroids: vec![],
+            //asteroid_factory: Asteroid::factory(phi),
             explosions: vec![],
             explosion_factory: Explosion::factory(phi),
             bg: bg,
@@ -249,9 +310,9 @@ impl View for GameView {
             .filter_map(|bullet| bullet.update(phi, elapsed))
             .collect();
 
-        self.asteroids = ::std::mem::replace(&mut self.asteroids, vec![])
+        self.trumps = ::std::mem::replace(&mut self.trumps, vec![])
             .into_iter()
-            .filter_map(|asteroid| asteroid.update(phi, elapsed))
+            .filter_map(|trump| trump.update(phi, elapsed))
             .collect();
 
         self.explosions = ::std::mem::replace(&mut self.explosions, vec![])
@@ -266,30 +327,30 @@ impl View for GameView {
             .map(|bullet| MaybeAlive { alive: true, value: bullet })
             .collect();
 
-        self.asteroids = ::std::mem::replace(&mut self.asteroids, vec![])
+        self.trumps = ::std::mem::replace(&mut self.trumps, vec![])
             .into_iter()
-            .filter_map(|asteroid| {
-                let mut asteroid_alive = true;
+            .filter_map(|trump| {
+                let mut trump_alive = true;
 
                 for bullet in &mut transition_bullets {
-                    if asteroid.rect().overlaps(bullet.value.rect()) {
-                        asteroid_alive = false;
+                    if trump.rect().overlaps(bullet.value.rect()) {
+                        trump_alive = false;
                         bullet.alive = false;
                     }
                 }
 
-                if asteroid.rect().overlaps(self.player.rect) {
-                    asteroid_alive = false;
+                if trump.rect().overlaps(self.player.rect) {
+                    trump_alive = false;
                     player_alive = false;
                 }
 
-                if asteroid_alive {
-                    Some(asteroid)
+                if trump_alive {
+                    Some(trump)
                 } else {
-                    Audio::playback_for(EXPLOSION_AUDIO_PATH);
+                    // Audio::playback_for(phi, EXPLOSION_AUDIO_PATH);
                     self.explosions.push(
                         self.explosion_factory.at_center(
-                            asteroid.rect().center()));
+                            trump.rect().center()));
                     None
                 }
             })
@@ -308,7 +369,7 @@ impl View for GameView {
         }
 
         if ::rand::random::<usize>() % 100 == 0 {
-            self.asteroids.push(self.asteroid_factory.random(phi));
+            self.trumps.push(self.trump_factory.random(phi));
         }
 
         // Clear the scene
@@ -317,10 +378,10 @@ impl View for GameView {
 
         // Render the Backgrounds
         self.bg.back.render(&mut phi.renderer, elapsed);
-        self.bg.middle.render(&mut phi.renderer, elapsed);
+        //self.bg.middle.render(&mut phi.renderer, elapsed);
 
-        for asteroid in &self.asteroids {
-            asteroid.render(phi);
+        for trump in &self.trumps {
+            trump.render(phi);
         }
 
         for bullet in &self.bullets {
@@ -335,7 +396,7 @@ impl View for GameView {
         self.player.render(phi);
 
         // Render the foreground
-        self.bg.front.render(&mut phi.renderer, elapsed);
+        //self.bg.front.render(&mut phi.renderer, elapsed);
 
         ViewAction::None
     }
@@ -352,10 +413,10 @@ impl Player {
                 for y in 0..3 {
                     for x in 0..3 {
                         let rendering = player.region(Rectangle {
-                            w: PLAYER_W,
-                            h: PLAYER_H,
-                            x: PLAYER_W * x as f64,
-                            y: PLAYER_H * y as f64,
+                            h: PLAYER_W,
+                            w: PLAYER_H,
+                            y: PLAYER_W * x as f64,
+                            x: PLAYER_H * y as f64,
                         });
 
                         match rendering {
@@ -368,7 +429,7 @@ impl Player {
                 Player {
                     rect: Rectangle {
                         x: 64.0,
-                        y: (phi.output_size().1 - PLAYER_H) / 2.0,
+                        y: (phi.output_size().1 - PLAYER_H) + 20.0,
                         w: PLAYER_W,
                         h: PLAYER_H,
                     },
@@ -399,11 +460,11 @@ impl Player {
     }
 
     pub fn spawn_bullets(&self) -> Vec<Box<Bullet::Bullet>> {
-        let cannons_x = self.rect.x + 30.0;
-        let cannon1_y = self.rect.y + 6.0;
-        let cannon2_y = self.rect.y + PLAYER_H - 10.0;
+        let cannon1_x = self.rect.w / 2.0 + self.rect.x;
+        let cannons_y = self.rect.y;
+        let cannon2_x = self.rect.x + PLAYER_W;
 
-        Bullet::spawn_bullets(self.cannon, cannons_x, cannon1_y, cannon2_y)
+        Bullet::spawn_bullets(self.cannon, cannon1_x, cannon2_x, cannons_y)
     }
 
     pub fn update(&mut self, phi: &mut Phi, elapsed: f64) {
@@ -442,8 +503,8 @@ impl Player {
 
         let dy = match (phi.events.key_up, phi.events.key_down) {
             (true, true) | (false, false) => 0.0,
-            (true, false) => -moved,
-            (false, true) => moved,
+            (true, false) => 0.0,
+            (false, true) => 0.0,
         };
 
         self.rect.x += dx;
@@ -456,9 +517,9 @@ impl Player {
         // We restrain the width because most screens are wider than they are high.
         let movable_region = Rectangle {
             x: 0.0,
-            y: 0.0,
-            w: phi.output_size().0 as f64 * 0.70,
-            h: phi.output_size().1 as f64,
+            y: phi.output_size().1 as f64 - PLAYER_H - 20.0,
+            w: phi.output_size().0 as f64,
+            h: phi.output_size().1 as f64 * 0.1,
         };
 
         // If the player cannot fit in the screen, then there is a problem and

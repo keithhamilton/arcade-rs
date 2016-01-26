@@ -1,6 +1,8 @@
+use ::phi::Phi;
 use std::thread::{self};
-use sdl2::{Sdl};
+use sdl2::Sdl;
 use sdl2::audio::{self, AudioSpecDesired, AudioSpecWAV, AudioCallback, AudioDevice};
+
 
 struct CopiedData {
     bytes: Vec<u8>,
@@ -43,20 +45,19 @@ impl AudioCallback for WrappedData {
 
 unsafe impl Send for WrappedData { }
 
-pub fn playback_for(track_path: &str) {
-    let sdl_context = ::sdl2::init().unwrap();
-    let audio_system = sdl_context.audio().unwrap();
+pub fn playback_for(phi: &mut Phi, track_path: &str) {
+    let audio_system = phi.context.audio().unwrap();
 
     let audio_spec = AudioSpecDesired{ freq: None, channels: None, samples: None };
     let audio_wav = AudioSpecWAV::load_wav(track_path).unwrap();
 
-    let copied_data = CopiedData{ bytes: audio_wav.buffer().to_vec(), position: 0 };
-
+    //let copied_data = CopiedData{ bytes: audio_wav.buffer().to_vec(), position: 0 };
+    let wrapped_data = WrappedData{ audio: audio_wav, position: 0 };
     let audio_device = audio_system.open_playback(None, audio_spec, move |spec| {
-        copied_data
+        wrapped_data
     }).unwrap();
 
     audio_device.resume();
 
-    thread::sleep_ms(2000);
+    thread::sleep_ms(500);
 }

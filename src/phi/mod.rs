@@ -2,8 +2,10 @@
 mod events;
 pub mod data;
 pub mod gfx;
+pub mod audio;
 
 use self::gfx::Sprite;
+use ::sdl2::Sdl;
 use ::sdl2::render::Renderer;
 use ::sdl2::pixels::Color;
 use ::std::collections::HashMap;
@@ -33,6 +35,7 @@ struct_events! {
 /// Bundles the Phi abstractions in a single structure which
 /// can be passed easily between functions.
 pub struct Phi<'window> {
+    pub context: Sdl,
     pub events: Events,
     pub renderer: Renderer<'window>,
 
@@ -40,10 +43,11 @@ pub struct Phi<'window> {
 }
 
 impl<'window> Phi<'window> {
-    fn new(events: Events, renderer: Renderer<'window>) -> Phi<'window> {
+    fn new(context: Sdl, events: Events, renderer: Renderer<'window>) -> Phi<'window> {
         ::sdl2_image::init(::sdl2_image::INIT_PNG);
 
         Phi {
+            context: context,
             events: events,
             renderer: renderer,
             cached_fonts: HashMap::new(),
@@ -98,35 +102,6 @@ pub trait View {
 }
 
 
-/// Create a window with name `title`, initialize the underlying libraries and
-/// start the game with the `View` returned by `init()`.
-///
-/// # Examples
-///
-/// Here, we simply show a window with color #ffff00 and exit when escape is
-/// pressed or when the window is closed.
-///
-/// ```
-/// struct MyView;
-///
-/// impl View for MyView {
-///     fn resume(&mut self, _: &mut Phi) {}
-///     fn pause(&mut self, _: &mut Phi) {}
-///     fn render(&mut self, context: &mut Phi, _: f64) -> ViewAction {
-///         if context.events.now.quit {
-///             return ViewAction::Quit;
-///         }
-///
-///         context.renderer.set_draw_color(Color::RGB(255, 255, 0));
-///         context.renderer.clear();
-///         ViewAction::None
-///     }
-/// }
-///
-/// spawn("Example", |_| {
-///     Box::new(MyView)
-/// });
-/// ```
 pub fn spawn<F>(title: &str, init: F)
 where F: Fn(&mut Phi) -> Box<View> {
     // Initialize SDL2
@@ -142,6 +117,7 @@ where F: Fn(&mut Phi) -> Box<View> {
 
     // Create the context
     let mut context = Phi::new(
+        sdl_context.clone(),
         Events::new(sdl_context.event_pump().unwrap()),
         window.renderer()
             .accelerated()
